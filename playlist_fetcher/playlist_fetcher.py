@@ -37,19 +37,22 @@ colorama.init(autoreset=True)
 # Argv Parser
 PARSER = argparse.ArgumentParser(fromfile_prefix_chars='@')
 PARSER.add_argument('-a', '--add-playlists', metavar='P', type=str, nargs='+',
-                    help='add playlists for future updates')
+                    help='add playlists (indexes) for future updates')
 PARSER.add_argument('--ignore-archive', action='store_true', help='ignore previously downloaded video archive')
+PARSER.add_argument('--no-downloads', action='store_true', help='do not download videos, only refresh/stats/...')
 PARSER.add_argument('-r', '--refresh', action='store_true', help='refreshes database (resets titles and dates)')
+PARSER.add_argument('-s', '--statistics', action='store_true', help='shows stats for downloaded content')
+# PARSER.add_argument('-p', '--purge', action='store_true', help='refreshes database (resets titles and dates)')
 PARSER.add_argument('download', metavar='P', type=str, nargs='*', help='download playlists (once)')
 
 logger = logging.getLogger(__name__)
 handler = logging.StreamHandler(sys.stdout)
 # formatter = logging.Formatter("%(levelname)s: %(message)s")
 
-
 # logging.Formatter()
 # handler.setFormatter(formatter)
 logger.addHandler(handler)
+
 
 class SilenceLogger(object):
     def debug(self, msg):
@@ -298,7 +301,8 @@ def main():
     if args.refresh is True:
         refresh(database, args)
 
-    download(database, args)
+    if args.no_downloads is False:
+        download(database, args)
 
 
 # with youtube_dl.YoutubeDL(ydl_opts) as ydl:
