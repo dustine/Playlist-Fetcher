@@ -85,7 +85,7 @@ class FluidStream(object):
         self.buffer = ""
 
 
-def getTqdmLogger(pbar, name="pbar"):
+def get_tqdm_logger(pbar, name="pbar"):
     logger = logging.getLogger(f"{__name__}.{name}")
     logger.addHandler(logging.StreamHandler(FluidStream(pbar)))
     logger.propagate = False
@@ -180,7 +180,7 @@ def refresh(database, args):
 
     with youtube_dl.YoutubeDL(custom_options) as ydl:
         pbar = tqdm(database.execute("""SELECT `key`, `url` FROM `playlists`""").fetchall())
-        custom_options["logger"] = getTqdmLogger(pbar)
+        custom_options["logger"] = get_tqdm_logger(pbar)
         for entry in pbar:
             # print(entry)
             info = ydl.extract_info(url=entry[1], download=False)
@@ -198,9 +198,13 @@ def download(database, args):
 
     index_pattern = re.compile(r'^\d+')
 
-    pbar = tqdm(list(oneoffs) + indexed)
-    custom_logger = getTqdmLogger(pbar)
-    for playlist in pbar:
+    main_bar = tqdm(list(oneoffs) + indexed)
+    custom_logger = get_tqdm_logger(main_bar)
+
+    def main_refresher(parameter_list):
+        main_bar.refresh()
+
+    for playlist in main_bar:
         # get total videos count
         silent_options = copy.copy(OPTIONS)
         silent_options["youtube_include_dash_manifest"] = True
@@ -235,6 +239,7 @@ def download(database, args):
                     if video_bar is not None:
                         video_bar.close()
                     prev_size = 0
+                    playlist_bar.refresh()
                 elif report["status"] == "downloading":
                     if prev_size == 0:
                         video_bar = tqdm(total=int(9e9), position=2, unit_scale=True, unit="B")
@@ -261,7 +266,7 @@ def download(database, args):
                     pprint.pprint(report)
 
             custom_options = copy.copy(OPTIONS)
-            custom_options["progress_hooks"] = [report_progress]
+            custom_options["progress_hooks"] = [report_progress, main_refresher]
             custom_options["logger"] = custom_logger
 
             with youtube_dl.YoutubeDL(custom_options) as ydl:
