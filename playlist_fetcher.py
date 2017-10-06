@@ -2,17 +2,16 @@
 
 # TODO:
 '''
-√ Update stored date from newly downloaded
-√ Capture and silently deal with KeyboardInterrup
-√ The "ERROR: ERROR: ... \n\n\n" log thing -o-
-? Fix borked progress bars while downloading
-? Make flake8 know that colorama is needed
+√ Make flake8 know that colorama is needed
+√ Fix borked progress bars while downloading
+- Fix progress bars staying on-screen
+- More coloured text
+- No "Requested formats are incompatible..."
 - Make refresh check the database instead of waiting for an error?
-- Write starter script that starts venv
-- See why powershell isn't respecting \r's
-- Add option to update youtube-dl (maybe part of the init script?)
 - Purging (interactive?)
 - Respect starred bool (prevent purging, download first?)
+- Statistics of downloaded videos (Time of play, disk size...)
+- Enqueue on VLC (by upload order, by playlist folder...)
 - Interactive starring? Removal?
 - Prettify the code (it's not very Pythonesque...)
 '''
@@ -23,15 +22,16 @@ import datetime
 import logging
 import os
 import pprint
+import re
 import sqlite3
 import sys
-import re
 
 import colorama
 import youtube_dl
+from colorama import Back, Fore, Style
 from tqdm import tqdm
 
-colorama.colorama_text()
+colorama.init(autoreset=True)
 
 # Argv Parser
 PARSER = argparse.ArgumentParser(fromfile_prefix_chars='@')
@@ -144,7 +144,7 @@ def add_playlists(database, args):
                 try:
                     database.execute("""INSERT INTO `playlists`(`id`,`url`,`title`) VALUES (?,?,?);""",
                                      (get_id(info), info["webpage_url"], info["title"],))
-                    print("Indexed playlist {} ({}).".format(get_id(info), info["title"]))
+                    print(Fore.CYAN + "Indexed playlist {} ({}).".format(get_id(info), info["title"]))
                 except sqlite3.IntegrityError as exc:
                     if exc.args[0] == 'UNIQUE constraint failed: playlists.id':
                         # id must be unique, fail silently
@@ -160,7 +160,8 @@ def refresh(database, args):
 
     custom_options = copy.copy(OPTIONS)
     custom_options["youtube_include_dash_manifest"] = True
-    if 'download_archive' in OPTIONS.keys:
+
+    if 'download_archive' in OPTIONS:
         del custom_options['download_archive']
 
     with youtube_dl.YoutubeDL(custom_options) as ydl:
@@ -197,10 +198,10 @@ def download(database, args):
                 continue
 
             with tqdm(total=n_videos) as playlist_bar:
-                playlist_bar.write(info["title"])
+                playlist_bar.write(Style.DIM + " - " + info["title"])
                 video_bar = None
                 prev_size = 0
-                prev_index = -1
+                prev_index = None
 
                 # callback function to report download progress
                 def report_progress(report):
@@ -229,10 +230,10 @@ def download(database, args):
                                 new_index = int(match.group())
                                 if new_index != prev_index:
                                     # don't interate on invalid indexes
-                                    if prev_index > 0:
+                                    if prev_index is not None:
                                         playlist_bar.update()
                                     prev_index = new_index
-                            logger.warning("Starting! " + report["filename"])
+
                         if "total_bytes" in report:
                             video_bar.total = report["total_bytes"]
                         else:
