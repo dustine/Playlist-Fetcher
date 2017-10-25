@@ -38,7 +38,7 @@ colorama.init(autoreset=True)
 PARSER = argparse.ArgumentParser(fromfile_prefix_chars='@')
 PARSER.add_argument('-a', '--add-playlists', metavar='P', type=str, nargs='+',
                     help='add playlists (indexes) for future updates')
-PARSER.add_argument('--ignore-archive', action='store_true', help='ignore previously downloaded video archive')
+PARSER.add_argument('--ignore-archive', action='store_true', help='ignore archive of previously downloaded videos')
 PARSER.add_argument('-f', '--refresh-database', action='store_true', help='refreshes index database (updates titles and dates)')
 # PARSER.add_argument('-s', '--statistics', action='store_true', help='shows stats for downloaded content')
 # PARSER.add_argument('-p', '--purge', action='store_true', help='refreshes database (resets titles and dates)')
