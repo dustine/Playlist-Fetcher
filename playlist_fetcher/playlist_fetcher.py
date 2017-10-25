@@ -39,11 +39,13 @@ PARSER = argparse.ArgumentParser(fromfile_prefix_chars='@')
 PARSER.add_argument('-a', '--add-playlists', metavar='P', type=str, nargs='+',
                     help='add playlists (indexes) for future updates')
 PARSER.add_argument('--ignore-archive', action='store_true', help='ignore previously downloaded video archive')
-PARSER.add_argument('--no-downloads', action='store_true', help='do not download videos, only refresh/stats/...')
-PARSER.add_argument('-r', '--refresh', action='store_true', help='refreshes database (resets titles and dates)')
-PARSER.add_argument('-s', '--statistics', action='store_true', help='shows stats for downloaded content')
+PARSER.add_argument('-u', '--update', action='store_true', help='refreshes database (updates titles and dates)')
+# PARSER.add_argument('-s', '--statistics', action='store_true', help='shows stats for downloaded content')
 # PARSER.add_argument('-p', '--purge', action='store_true', help='refreshes database (resets titles and dates)')
 PARSER.add_argument('download', metavar='P', type=str, nargs='*', help='download playlists (once)')
+PARSER.add_argument('--no-index', action='store_true', help='ignores indexed playlists for download')
+PARSER.add_argument('-s', '--simulate', action='store_true', help='do not download videos, only refresh/stats/...')
+PARSER.add_argument('-r', '--reverse', action='store_true', help='reverses the download order for indexed items')
 
 logger = logging.getLogger(__name__)
 handler = logging.StreamHandler(sys.stdout)
@@ -191,7 +193,12 @@ def refresh(database, args):
 
 
 def download(database, args):
-    indexed = database.execute("""SELECT `key`, `url` FROM `playlists` ORDER BY `date` ASC""").fetchall()
+    indexed = list()
+
+    if not args.no_index:
+        order = "DESC" if args.reverse else "ASC"
+        indexed = database.execute("""SELECT `key`, `url` FROM `playlists` ORDER BY `date` {}""".format(order)).fetchall()
+
     print(Fore.CYAN + "Updating {} playlists ({} indexed)...".format(len(indexed) + len(args.download), len(indexed)))
 
     oneoffs = map(lambda elem: (None, elem), args.download)
@@ -299,14 +306,16 @@ def main():
     if args.ignore_archive is False:
         OPTIONS['download_archive'] = archive
         # FLAT_OPTIONS and SHALLOW_OPTIONS don't use archive
+    else:
+        logger.warning(Fore.YELLOW + "Warning: Ignoring download archive!")
 
     if args.add_playlists is not None:
         add_playlists(database, args)
 
-    if args.refresh is True:
+    if args.update is True:
         refresh(database, args)
 
-    if args.no_downloads is False:
+    if args.simulate is False:
         download(database, args)
 
 
