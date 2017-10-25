@@ -29,7 +29,7 @@ import sys
 
 import colorama
 import youtube_dl
-from colorama import Back, Fore, Style
+from colorama import Fore, Style
 from tqdm import tqdm
 
 colorama.init(autoreset=True)
@@ -39,12 +39,12 @@ PARSER = argparse.ArgumentParser(fromfile_prefix_chars='@')
 PARSER.add_argument('-a', '--add-playlists', metavar='P', type=str, nargs='+',
                     help='add playlists (indexes) for future updates')
 PARSER.add_argument('--ignore-archive', action='store_true', help='ignore previously downloaded video archive')
-PARSER.add_argument('-u', '--update', action='store_true', help='refreshes database (updates titles and dates)')
+PARSER.add_argument('-f', '--refresh-database', action='store_true', help='refreshes index database (updates titles and dates)')
 # PARSER.add_argument('-s', '--statistics', action='store_true', help='shows stats for downloaded content')
 # PARSER.add_argument('-p', '--purge', action='store_true', help='refreshes database (resets titles and dates)')
-PARSER.add_argument('download', metavar='P', type=str, nargs='*', help='download playlists (once)')
-PARSER.add_argument('--no-index', action='store_true', help='ignores indexed playlists for download')
-PARSER.add_argument('-s', '--simulate', action='store_true', help='do not download videos, only refresh/stats/...')
+PARSER.add_argument('download', metavar='P', type=str, nargs='*', help='playlist URI')
+PARSER.add_argument('--skip-index', action='store_true', help='skips indexed playlists for download')
+PARSER.add_argument('-d', '--no-downloads', action='store_true', help='do not download videos, only refresh/statistics/...')
 PARSER.add_argument('-r', '--reverse', action='store_true', help='reverses the download order for indexed items')
 
 logger = logging.getLogger(__name__)
@@ -171,18 +171,18 @@ def add_playlists(database, args):
                 database.commit()
 
 
-def refresh(database, args):
+def refresh_database(database, args):
     print(f"{Fore.CYAN}Refreshing database... {Fore.YELLOW}this may take a while.")
 
     custom_options = copy.copy(OPTIONS)
-    custom_options["youtube_include_dash_manifest"] = True
+    custom_options["youtube_include_dash_manifest"] = False
 
     if 'download_archive' in OPTIONS:
         del custom_options['download_archive']
 
+    pbar = tqdm(database.execute("""SELECT `key`, `url` FROM `playlists`""").fetchall())
+    custom_options["logger"] = get_tqdm_logger(pbar)
     with youtube_dl.YoutubeDL(custom_options) as ydl:
-        pbar = tqdm(database.execute("""SELECT `key`, `url` FROM `playlists`""").fetchall())
-        custom_options["logger"] = get_tqdm_logger(pbar)
         for entry in pbar:
             # print(entry)
             info = ydl.extract_info(url=entry[1], download=False)
@@ -214,12 +214,12 @@ def download(database, args):
     for playlist in main_bar:
         # get total videos count
         silent_options = copy.copy(OPTIONS)
-        silent_options["youtube_include_dash_manifest"] = True
+        silent_options["youtube_include_dash_manifest"] = False
         silent_options["logger"] = SilenceLogger()
 
         with youtube_dl.YoutubeDL(silent_options) as ydl:
             info = ydl.extract_info(url=playlist[1], download=False)
-            n_videos = len(info["entries"])
+            n_videos = len(info["entries"]) if info is not None else 0
 
         if n_videos <= 0:
             continue
@@ -312,10 +312,10 @@ def main():
     if args.add_playlists is not None:
         add_playlists(database, args)
 
-    if args.update is True:
-        refresh(database, args)
+    if args.refresh_database is True:
+        refresh_database(database, args)
 
-    if args.simulate is False:
+    if args.no_download is False:
         download(database, args)
 
 
