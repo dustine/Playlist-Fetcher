@@ -23,9 +23,10 @@ import datetime
 import logging
 import os
 import pprint
-import re
+# import re
 import sqlite3
 import sys
+# import json
 
 import colorama
 import youtube_dl
@@ -56,7 +57,7 @@ handler = logging.StreamHandler(sys.stdout)
 logger.addHandler(handler)
 
 
-class SilenceLogger(object):
+class SilentLogger(object):
     def debug(self, msg):
         pass
 
@@ -183,30 +184,34 @@ def refresh_database(database, args):
     pbar = tqdm(database.execute("""SELECT `key`, `url` FROM `playlists`""").fetchall())
     custom_options["logger"] = get_tqdm_logger(pbar)
     with youtube_dl.YoutubeDL(custom_options) as ydl:
-        for entry in pbar:
+        for playlist in pbar:
             # print(entry)
-            info = ydl.extract_info(url=entry[1], download=False)
+            info = ydl.extract_info(url=playlist[1], download=False)
 
             database.execute("""UPDATE `playlists` SET `title`=?, `date`=? WHERE `key`=?""",
-                             (info["title"], get_max_upload_date(info["entries"]), entry[0]))
+                             (info["title"], get_max_upload_date(info["entries"]), playlist[0]))
             database.commit()
 
 
 def download(database, args):
     indexed = list()
 
-    if not args.no_index:
+    if args.skip_index is not True:
         order = "DESC" if args.reverse else "ASC"
         indexed = database.execute("""SELECT `key`, `url` FROM `playlists` ORDER BY `date` {}""".format(order)).fetchall()
 
     print(Fore.CYAN + "Updating {} playlists ({} indexed)...".format(len(indexed) + len(args.download), len(indexed)))
 
-    oneoffs = map(lambda elem: (None, elem), args.download)
+    oneoffs = map(lambda e: (None, e), args.download)
 
-    index_pattern = re.compile(r'^\d+')
+    # index_pattern = re.compile(r'^\d+')
 
-    main_bar = tqdm(list(oneoffs) + indexed)
+    main_bar = tqdm(list(oneoffs) + indexed, unit='pl')
     custom_logger = get_tqdm_logger(main_bar)
+
+    video_bar_options = {
+        "total": int(9e9), "position": 2, "unit_scale": True, "unit": "B"
+    }
 
     def main_refresher(parameter_list):
         main_bar.refresh()
@@ -215,52 +220,47 @@ def download(database, args):
         # get total videos count
         silent_options = copy.copy(OPTIONS)
         silent_options["youtube_include_dash_manifest"] = False
-        silent_options["logger"] = SilenceLogger()
+        silent_options["logger"] = SilentLogger()
 
         with youtube_dl.YoutubeDL(silent_options) as ydl:
             info = ydl.extract_info(url=playlist[1], download=False)
-            n_videos = len(info["entries"]) if info is not None else 0
+            if info is None:
+                continue
 
-        if n_videos <= 0:
+            info["entries"] = list(filter(lambda x: x is not None, info["entries"]))
+
+            # if n_videos > 0:
+            #     with open(str(playlist[0]) + ".log", "w+") as file:
+            #     file.write(json.dumps(info))
+            for entry in info["entries"]:
+                entry["_filename"] = ydl.prepare_filename(entry)
+
+        if len(info["entries"]) <= 0:
             continue
 
-        with tqdm(total=n_videos) as playlist_bar:
-            playlist_bar.write(Style.DIM + " - " + info["title"])
+        playlist_bar = tqdm(info["entries"], unit='video')
+        playlist_bar.write(Style.DIM + " - " + info["title"])
+        # video_bar = None
+        # prev_size = 0
+        # prev_index = None
+
+        for video in playlist_bar:
+            # callback function to report download progress
             video_bar = None
             prev_size = 0
-            prev_index = None
 
-            # callback function to report download progress
             def report_progress(report):
                 """youtube-dl callback function for progress"""
                 nonlocal video_bar
                 nonlocal prev_size
-                nonlocal prev_index
 
-                if report["status"] == "error":
-                    if video_bar is not None:
-                        video_bar.close()
-                    prev_size = 0
-                    playlist_bar.update()
-                elif report["status"] == "finished":
-                    if video_bar is not None:
-                        video_bar.close()
-                    prev_size = 0
-                    playlist_bar.refresh()
+                if report["status"] == "error" or report["status"] == "finished":
+                    video_bar.close()
+                    video_bar = None
                 elif report["status"] == "downloading":
-                    if prev_size == 0:
-                        video_bar = tqdm(total=int(9e9), position=2, unit_scale=True, unit="B")
-                        playlist_bar.refresh()
-
-                        # iterate playlist_bar with filename index
-                        match = re.match(index_pattern, os.path.basename(report["filename"]))
-                        if match is not None:
-                            new_index = int(match.group())
-                            if new_index != prev_index:
-                                # don't interate on invalid indexes
-                                if prev_index is not None:
-                                    playlist_bar.update()
-                                prev_index = new_index
+                    if video_bar is None:
+                        prev_size = 0
+                        video_bar = tqdm(**video_bar_options)
 
                     if "total_bytes" in report:
                         video_bar.total = report["total_bytes"]
@@ -274,24 +274,30 @@ def download(database, args):
 
             custom_options = copy.copy(OPTIONS)
             custom_options["progress_hooks"] = [report_progress, main_refresher]
+            custom_options["outtmpl"] = video["_filename"]
             custom_options["logger"] = custom_logger
+            custom_options["ignoreerrors"] = False
 
             with youtube_dl.YoutubeDL(custom_options) as ydl:
-                # download the playlist
-                info = ydl.extract_info(url=playlist[1])
-                playlist_bar.close()
+                try:
+                    # download the video
+                    info = ydl.extract_info(url=video["webpage_url"])
+                    # with open(str(video["display_id"]) + ".log", "w+") as file:
+                    #     file.write(json.dumps(info))
+                except (youtube_dl.utils.DownloadError,) as exc:
+                    custom_logger.error(exc.msg)
+                else:
+                    # post-processing: save the newest upload date
+                    if playlist[0] is None:
+                        continue
 
-                # post-processing: save the newest upload date
-                if playlist[0] is None:
-                    continue
-                date = get_max_upload_date(info["entries"])
-                if date is None:
-                    continue
-                database.execute("""update playlists set date = coalesce(
-                    max(?, (select date from playlists where key = ?)), ?)
-                    where key = ?""",
-                                 (date, playlist[0], date, playlist[0]))
-                database.commit()
+                    date = get_max_upload_date([info])
+                    if date is None:
+                        continue
+                    database.execute("""update playlists set date = coalesce(
+                        max(?, (select date from playlists where key = ?)), ?)
+                        where key = ?""", (date, playlist[0], date, playlist[0]))
+                    database.commit()
 
 
 def main():
@@ -315,7 +321,7 @@ def main():
     if args.refresh_database is True:
         refresh_database(database, args)
 
-    if args.no_download is False:
+    if args.no_downloads is False:
         download(database, args)
 
 
