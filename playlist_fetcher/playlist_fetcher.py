@@ -23,10 +23,8 @@ import datetime
 import logging
 import os
 import pprint
-# import re
 import sqlite3
 import sys
-# import json
 
 import colorama
 import youtube_dl
@@ -37,8 +35,7 @@ colorama.init(autoreset=True)
 
 # Argv Parser
 PARSER = argparse.ArgumentParser(fromfile_prefix_chars='@')
-PARSER.add_argument('-a', '--add-playlists', metavar='P', type=str, nargs='+',
-                    help='add playlists (indexes) for future updates')
+PARSER.add_argument('-a', '--add-playlists', metavar='P', type=str, nargs='+', help='add playlists (indexes) for future updates')
 PARSER.add_argument('--ignore-archive', action='store_true', help='ignore archive of previously downloaded videos')
 PARSER.add_argument('-f', '--refresh-database', action='store_true', help='refreshes index database (updates titles and dates)')
 # PARSER.add_argument('-s', '--statistics', action='store_true', help='shows stats for downloaded content')
