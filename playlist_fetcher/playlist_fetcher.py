@@ -88,9 +88,9 @@ class FluidStream(object):
         self.buffer = ""
 
 
-def get_tqdm_logger(pbar, name="pbar"):
+def get_tqdm_logger(bar, name="bar"):
     logger = logging.getLogger(f"{__name__}.{name}")
-    logger.addHandler(logging.StreamHandler(FluidStream(pbar)))
+    logger.addHandler(logging.StreamHandler(FluidStream(bar)))
     logger.propagate = False
     return logger
 
@@ -181,15 +181,14 @@ def refresh_database(database, args):
     if 'download_archive' in OPTIONS:
         del custom_options['download_archive']
 
-    pbar = tqdm(database.execute("""SELECT `key`, `url` FROM `playlists`""").fetchall())
-    custom_options["logger"] = get_tqdm_logger(pbar)
+    bar = tqdm(database.execute("""SELECT `key`, `url` FROM `playlists`""").fetchall())
+    custom_options["logger"] = get_tqdm_logger(bar)
     with youtube_dl.YoutubeDL(custom_options) as ydl:
-        for playlist in pbar:
+        for playlist in bar:
             # print(entry)
             info = ydl.extract_info(url=playlist[1], download=False)
 
-            database.execute("""UPDATE `playlists` SET `title`=?, `date`=? WHERE `key`=?""",
-                             (info["title"], get_max_upload_date(info["entries"]), playlist[0]))
+            database.execute("""UPDATE `playlists` SET `title`=?, `date`=? WHERE `key`=?""", (info["title"], get_max_upload_date(info["entries"]), playlist[0]))
             database.commit()
 
 
@@ -294,9 +293,7 @@ def download(database, args):
                     date = get_max_upload_date([info])
                     if date is None:
                         continue
-                    database.execute("""update playlists set date = coalesce(
-                        max(?, (select date from playlists where key = ?)), ?)
-                        where key = ?""", (date, playlist[0], date, playlist[0]))
+                    database.execute("""update playlists set date = coalesce(max(?, (select date from playlists where key = ?)), ?) where key = ?""", (date, playlist[0], date, playlist[0]))
                     database.commit()
 
 
