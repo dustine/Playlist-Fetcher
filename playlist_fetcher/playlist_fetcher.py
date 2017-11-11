@@ -209,9 +209,6 @@ def download(database, args):
         "total": int(9e9), "position": 2, "unit_scale": True, "unit": "B"
     }
 
-    def main_refresher(parameter_list):
-        main_bar.refresh()
-
     for playlist in main_bar:
         # get total videos count
         silent_options = copy.copy(OPTIONS)
@@ -236,12 +233,13 @@ def download(database, args):
 
         playlist_bar = tqdm(info["entries"], unit='video')
         playlist_bar.write(Style.DIM + " - " + info["title"])
-        # video_bar = None
-        # prev_size = 0
-        # prev_index = None
+
+        def refresh_bars(parameter_list):
+            """refreshes the progress bars while downloading a video"""
+            main_bar.refresh()
+            playlist_bar.refresh()
 
         for video in playlist_bar:
-            # callback function to report download progress
             video_bar = None
             prev_size = 0
 
@@ -251,12 +249,13 @@ def download(database, args):
                 nonlocal prev_size
 
                 if report["status"] == "error" or report["status"] == "finished":
-                    video_bar.close()
-                    video_bar = None
+                    if video_bar is not None:
+                        video_bar.close()
+                        video_bar = None
                 elif report["status"] == "downloading":
                     if video_bar is None:
-                        prev_size = 0
                         video_bar = tqdm(**video_bar_options)
+                        prev_size = 0
 
                     if "total_bytes" in report:
                         video_bar.total = report["total_bytes"]
@@ -269,14 +268,13 @@ def download(database, args):
                     pprint.pprint(report)
 
             custom_options = copy.copy(OPTIONS)
-            custom_options["progress_hooks"] = [report_progress, main_refresher]
+            custom_options["progress_hooks"] = [report_progress, refresh_bars]
             custom_options["outtmpl"] = video["_filename"]
             custom_options["logger"] = custom_logger
             custom_options["ignoreerrors"] = False
 
             with youtube_dl.YoutubeDL(custom_options) as ydl:
                 try:
-                    # download the video
                     info = ydl.extract_info(url=video["webpage_url"])
                     # with open(str(video["display_id"]) + ".log", "w+") as file:
                     #     file.write(json.dumps(info))
