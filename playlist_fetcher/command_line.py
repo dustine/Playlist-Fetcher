@@ -1,14 +1,16 @@
 import sys
 import traceback
-
-import playlist_fetcher
+from time import sleep
 
 
 def main():
     try:
+        import playlist_fetcher
         playlist_fetcher.main()
     except KeyboardInterrupt:
-        print("\rShutdown requested... exiting")
+        playlist_fetcher.abort()
+        sleep(0.1)
+        # tqdm.write("Shutdown requested... exiting")
     except Exception:
         traceback.print_exc(file=sys.stdout)
         return 1

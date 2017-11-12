@@ -25,11 +25,12 @@ import os
 import pprint
 import sqlite3
 import sys
+import weakref
 
 import colorama
 import youtube_dl
 from colorama import Fore, Style
-from tqdm import tqdm
+from tqdm import tqdm as _tqdm
 
 colorama.init(autoreset=True)
 
@@ -102,6 +103,22 @@ OPTIONS = {
     'quiet': True,
     'logger': logger,
 }
+
+progress_bars = weakref.WeakSet()
+
+
+def tqdm(*args, **kwargs):
+    bar = _tqdm(*args, **kwargs)
+    progress_bars.add(bar)
+    return bar
+
+
+def abort():
+    _tqdm.write("Shutdown requested... exiting")
+
+    for bar in progress_bars:
+        if bar is not None:
+            bar.close()
 
 
 def init_files(path):
@@ -206,7 +223,8 @@ def download(database, args):
     custom_logger = get_tqdm_logger(main_bar)
 
     video_bar_options = {
-        "total": int(9e9), "position": 2, "unit_scale": True, "unit": "B"
+        # "position": 2,
+        "unit_scale": True, "unit": "B", "miniters": 1,
     }
 
     for playlist in main_bar:
@@ -234,19 +252,12 @@ def download(database, args):
         playlist_bar = tqdm(info["entries"], unit='video')
         playlist_bar.write(Style.DIM + " - " + info["title"])
 
-        def refresh_bars(parameter_list):
-            """refreshes the progress bars while downloading a video"""
-            main_bar.refresh()
-            playlist_bar.refresh()
-
         for video in playlist_bar:
-            video_bar = None
-            prev_size = 0
+            video_bar = None  # type: tqdm
 
             def report_progress(report):
                 """youtube-dl callback function for progress"""
-                nonlocal video_bar
-                nonlocal prev_size
+                nonlocal video_bar  # type: tqdm
 
                 if report["status"] == "error" or report["status"] == "finished":
                     if video_bar is not None:
@@ -255,20 +266,17 @@ def download(database, args):
                 elif report["status"] == "downloading":
                     if video_bar is None:
                         video_bar = tqdm(**video_bar_options)
-                        prev_size = 0
 
-                    if "total_bytes" in report:
-                        video_bar.total = report["total_bytes"]
-                    else:
-                        video_bar.total = report["total_bytes_estimate"]
-
-                    video_bar.update(report["downloaded_bytes"] - prev_size)
-                    prev_size = report["downloaded_bytes"]
+                    video_bar.total = report["total_bytes"] if "total_bytes" in report else report["total_bytes_estimate"]
+                    video_bar.update(report["downloaded_bytes"] - video_bar.n)
                 else:
+                    custom_logger.error("Unknown stamp")
                     pprint.pprint(report)
 
+                # video_bar.refresh()
+
             custom_options = copy.copy(OPTIONS)
-            custom_options["progress_hooks"] = [report_progress, refresh_bars]
+            custom_options["progress_hooks"] = [report_progress]
             custom_options["outtmpl"] = video["_filename"]
             custom_options["logger"] = custom_logger
             custom_options["ignoreerrors"] = False
@@ -279,8 +287,11 @@ def download(database, args):
                     # with open(str(video["display_id"]) + ".log", "w+") as file:
                     #     file.write(json.dumps(info))
                 except (youtube_dl.utils.DownloadError,) as exc:
-                    custom_logger.error(exc.msg)
+                    custom_logger.error(exc)
                 else:
+                    if video_bar is not None:
+                        video_bar.close()
+
                     # post-processing: save the newest upload date
                     if playlist[0] is None:
                         continue
