@@ -10,7 +10,6 @@ def main():
     except KeyboardInterrupt:
         playlist_fetcher.abort()
         sleep(0.1)
-        # tqdm.write("Shutdown requested... exiting")
     except Exception:
         traceback.print_exc(file=sys.stdout)
         return 1
