@@ -2,9 +2,7 @@
 
 # TODO:
 '''
-√ Make flake8 know that colorama is needed
 √ Fix borked progress bars while downloading
-√ Silence errors from pre-count
 ? Fix progress bars staying on-screen
 - More coloured text
 - No "Requested formats are incompatible..."
@@ -17,7 +15,6 @@
 - Prettify the code (it's not very Pythonesque...)
 '''
 
-import argparse
 import copy
 import datetime
 import logging
@@ -33,18 +30,6 @@ from colorama import Fore, Style
 from tqdm import tqdm as _tqdm
 
 colorama.init(autoreset=True)
-
-# Argv Parser
-PARSER = argparse.ArgumentParser(fromfile_prefix_chars='@')
-PARSER.add_argument('-a', '--add-playlists', metavar='P', type=str, nargs='+', help='add playlists (indexes) for future updates')
-PARSER.add_argument('--ignore-archive', action='store_true', help='ignore archive of previously downloaded videos')
-PARSER.add_argument('-f', '--refresh-database', action='store_true', help='refreshes index database (updates titles and dates)')
-# PARSER.add_argument('-s', '--statistics', action='store_true', help='shows stats for downloaded content')
-# PARSER.add_argument('-p', '--purge', action='store_true', help='refreshes database (resets titles and dates)')
-PARSER.add_argument('download', metavar='P', type=str, nargs='*', help='playlist URI')
-PARSER.add_argument('--skip-index', action='store_true', help='skips indexed playlists for download')
-PARSER.add_argument('-d', '--no-downloads', action='store_true', help='do not download videos, only refresh/statistics/...')
-PARSER.add_argument('-r', '--reverse', action='store_true', help='reverses the download order for indexed items')
 
 logger = logging.getLogger(__name__)
 handler = logging.StreamHandler(sys.stdout)
@@ -87,7 +72,7 @@ class FluidStream(object):
 
 
 def get_tqdm_logger(bar, name="bar"):
-    logger = logging.getLogger(f"{__name__}.{name}")
+    logger = logging.getLogger("{}.{}".format(__name__, name))
     logger.addHandler(logging.StreamHandler(FluidStream(bar)))
     logger.propagate = False
     return logger
@@ -166,7 +151,7 @@ def add_playlists(database, args):
     custom_options["extract_flat"] = 'in_playlist'
 
     with youtube_dl.YoutubeDL(custom_options) as ydl:
-        for playlist in args.add_playlists:
+        for playlist in args['add_playlists']:
             info = ydl.extract_info(url=playlist, download=False)
 
             if info["_type"] != "playlist":
@@ -187,7 +172,7 @@ def add_playlists(database, args):
 
 
 def refresh_database(database, args):
-    print(f"{Fore.CYAN}Refreshing database... {Fore.YELLOW}this may take a while.")
+    print("{}Refreshing database... {}this may take a while.".format(Fore.CYAN, Fore.YELLOW))
 
     custom_options = copy.copy(OPTIONS)
     custom_options["youtube_include_dash_manifest"] = False
@@ -209,13 +194,13 @@ def refresh_database(database, args):
 def download(database, args):
     indexed = list()
 
-    if args.skip_index is not True:
-        order = "DESC" if args.reverse else "ASC"
+    if args['skip_index'] is not True:
+        order = "DESC" if args['reverse'] else "ASC"
         indexed = database.execute("""SELECT `key`, `url` FROM `playlists` ORDER BY `date` {}""".format(order)).fetchall()
 
-    print(Fore.CYAN + "Updating {} playlists ({} indexed)...".format(len(indexed) + len(args.download), len(indexed)))
+    print(Fore.CYAN + "Updating {} playlists ({} indexed)...".format(len(indexed) + len(args['download']), len(indexed)))
 
-    oneoffs = map(lambda e: (None, e), args.download)
+    oneoffs = map(lambda e: (None, e), args['download'])
 
     # index_pattern = re.compile(r'^\d+')
 
@@ -303,28 +288,28 @@ def download(database, args):
                     database.commit()
 
 
-def main():
+def main(**args):
     """main program loop"""
-    args = PARSER.parse_args()
+
     path = os.getcwd()
     database = init_files(os.path.join(path, '.playlist_fetcher'))
     archive = os.path.join(path, '.playlist_fetcher', 'archive.txt')
 
     # print(args.__dict__)
 
-    if args.ignore_archive is False:
+    if args['ignore_archive'] is False:
         OPTIONS['download_archive'] = archive
         # FLAT_OPTIONS and SHALLOW_OPTIONS don't use archive
     else:
         logger.warning(Fore.YELLOW + "Warning: Ignoring download archive!")
 
-    if args.add_playlists is not None:
+    if args['add_playlists'] is not None:
         add_playlists(database, args)
 
-    if args.refresh_database is True:
+    if args['refresh_database'] is True:
         refresh_database(database, args)
 
-    if args.no_downloads is False:
+    if args['no_downloads'] is False:
         download(database, args)
 
 
