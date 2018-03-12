@@ -32,6 +32,7 @@ from tqdm import tqdm as _tqdm
 colorama.init(autoreset=True)
 
 logger = logging.getLogger(__name__)
+
 handler = logging.StreamHandler(sys.stdout)
 # formatter = logging.Formatter("%(levelname)s: %(message)s")
 
@@ -59,6 +60,7 @@ class SilentLogger(object):
 
 class FluidStream(object):
     """prints to fluid (no-flush) writtable object"""
+
     def __init__(self, fluid):
         self.fluid = fluid
         self.buffer = ""
@@ -138,7 +140,9 @@ def get_max_upload_date(entries):
             return datetime.date(int(ud[:-4]), int(ud[-4:-2]), int(ud[-2:]))
         return None
 
-    return max(map(get_upload_date, filter(lambda x: x is not None, entries)), default=None)
+    return max(
+        map(get_upload_date, filter(lambda x: x is not None, entries)),
+        default=None)
 
 
 def get_id(playlist_info):
@@ -155,12 +159,19 @@ def add_playlists(database, args):
             info = ydl.extract_info(url=playlist, download=False)
 
             if info["_type"] != "playlist":
-                logger.warning("{} not a playlist, skipping...".format(playlist))
+                logger.warning(
+                    "{} not a playlist, skipping...".format(playlist))
             else:
                 try:
-                    database.execute("""INSERT INTO `playlists`(`id`,`url`,`title`) VALUES (?,?,?);""",
-                                     (get_id(info), info["webpage_url"], info["title"],))
-                    print(Fore.GREEN + "Indexed playlist {} ({}).".format(get_id(info), info["title"]))
+                    database.execute(
+                        """INSERT INTO `playlists`(`id`,`url`,`title`) VALUES (?,?,?);""",
+                        (
+                            get_id(info),
+                            info["webpage_url"],
+                            info["title"],
+                        ))
+                    print(Fore.GREEN + "Indexed playlist {} ({}).".format(
+                        get_id(info), info["title"]))
                 except sqlite3.IntegrityError as exc:
                     if exc.args[0] == 'UNIQUE constraint failed: playlists.id':
                         # id must be unique, fail silently
@@ -172,7 +183,8 @@ def add_playlists(database, args):
 
 
 def refresh_database(database, args):
-    print("{}Refreshing database... {}this may take a while.".format(Fore.CYAN, Fore.YELLOW))
+    print("{}Refreshing database... {}this may take a while.".format(
+        Fore.CYAN, Fore.YELLOW))
 
     custom_options = copy.copy(OPTIONS)
     custom_options["youtube_include_dash_manifest"] = False
@@ -180,14 +192,19 @@ def refresh_database(database, args):
     if 'download_archive' in OPTIONS:
         del custom_options['download_archive']
 
-    bar = tqdm(database.execute("""SELECT `key`, `url` FROM `playlists`""").fetchall())
+    bar = tqdm(
+        database.execute("""SELECT `key`, `url` FROM `playlists`""")
+        .fetchall())
     custom_options["logger"] = get_tqdm_logger(bar)
     with youtube_dl.YoutubeDL(custom_options) as ydl:
         for playlist in bar:
             # print(entry)
             info = ydl.extract_info(url=playlist[1], download=False)
 
-            database.execute("""UPDATE `playlists` SET `title`=?, `date`=? WHERE `key`=?""", (info["title"], get_max_upload_date(info["entries"]), playlist[0]))
+            database.execute(
+                """UPDATE `playlists` SET `title`=?, `date`=? WHERE `key`=?""",
+                (info["title"], get_max_upload_date(info["entries"]),
+                 playlist[0]))
             database.commit()
 
 
@@ -196,9 +213,12 @@ def download(database, args):
 
     if args['skip_index'] is not True:
         order = "DESC" if args['reverse'] else "ASC"
-        indexed = database.execute("""SELECT `key`, `url` FROM `playlists` ORDER BY `date` {}""".format(order)).fetchall()
+        indexed = database.execute(
+            """SELECT `key`, `url` FROM `playlists` ORDER BY `date` {}""".
+            format(order)).fetchall()
 
-    print(Fore.CYAN + "Updating {} playlists ({} indexed)...".format(len(indexed) + len(args['download']), len(indexed)))
+    print(Fore.CYAN + "Updating {} playlists ({} indexed)...".format(
+        len(indexed) + len(args['download']), len(indexed)))
 
     oneoffs = map(lambda e: (None, e), args['download'])
 
@@ -209,7 +229,9 @@ def download(database, args):
 
     video_bar_options = {
         # "position": 2,
-        "unit_scale": True, "unit": "B", "miniters": 1,
+        "unit_scale": True,
+        "unit": "B",
+        "miniters": 1,
     }
 
     for playlist in main_bar:
@@ -223,13 +245,15 @@ def download(database, args):
             if info is None:
                 continue
 
-            info["entries"] = list(filter(lambda x: x is not None, info["entries"]))
+            info["entries"] = list(
+                filter(lambda x: x is not None, info["entries"]))
 
             # if n_videos > 0:
             #     with open(str(playlist[0]) + ".log", "w+") as file:
             #     file.write(json.dumps(info))
             for entry in info["entries"]:
-                entry["_filename"] = ydl.prepare_filename(entry)
+                entry["_filename"] = ydl.prepare_filename(entry).replace(
+                    "%", "%%")
 
         if len(info["entries"]) <= 0:
             continue
@@ -252,7 +276,9 @@ def download(database, args):
                     if video_bar is None:
                         video_bar = tqdm(**video_bar_options)
 
-                    video_bar.total = report["total_bytes"] if "total_bytes" in report else report["total_bytes_estimate"]
+                    video_bar.total = report[
+                        "total_bytes"] if "total_bytes" in report else report[
+                            "total_bytes_estimate"]
                     video_bar.update(report["downloaded_bytes"] - video_bar.n)
                 else:
                     custom_logger.error("Unknown stamp")
@@ -271,7 +297,7 @@ def download(database, args):
                     info = ydl.extract_info(url=video["webpage_url"])
                     # with open(str(video["display_id"]) + ".log", "w+") as file:
                     #     file.write(json.dumps(info))
-                except (youtube_dl.utils.DownloadError,) as exc:
+                except (youtube_dl.utils.DownloadError, ) as exc:
                     custom_logger.error(exc)
                 else:
                     if video_bar is not None:
@@ -284,12 +310,20 @@ def download(database, args):
                     date = get_max_upload_date([info])
                     if date is None:
                         continue
-                    database.execute("""update playlists set date = coalesce(max(?, (select date from playlists where key = ?)), ?) where key = ?""", (date, playlist[0], date, playlist[0]))
+                    database.execute(
+                        """update playlists set date = coalesce(max(?, (select date from playlists where key = ?)), ?) where key = ?""",
+                        (date, playlist[0], date, playlist[0]))
                     database.commit()
 
 
 def main(**args):
     """main program loop"""
+
+    if args['verbose'] > 1:
+        logger.setLevel(logging.DEBUG)
+    elif args['verbose'] > 0:
+        logger.setLevel(logging.INFO)
+    logger.info("Arguments passed: %s", args)
 
     path = os.getcwd()
     database = init_files(os.path.join(path, '.playlist_fetcher'))
@@ -315,7 +349,6 @@ def main(**args):
 
 # with youtube_dl.YoutubeDL(ydl_opts) as ydl:
 #     ydl.download(['https://www.youtube.com/watch?v=BaW_jenozKc'])
-
 
 if __name__ == '__main__':
     main()
