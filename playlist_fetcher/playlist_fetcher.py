@@ -326,12 +326,19 @@ def main(**args):
     logger.info("Arguments passed: %s", args)
 
     path = os.getcwd()
-    database = init_files(os.path.join(path, '.playlist_fetcher'))
-    archive = os.path.join(path, '.playlist_fetcher', 'archive.txt')
+    data = os.path.join(path, '.playlist_fetcher')
+
+    if not os.path.exists(data):
+        response = str(input(Fore.YELLOW + "Download data not found, initialize directory? (y/n) " + Fore.RESET))
+        if not response.lower().startswith("y"):
+            return
+
+    database = init_files(data)
+    archive = os.path.join(data, 'archive.txt')
 
     # print(args.__dict__)
 
-    if args['ignore_archive'] is False:
+    if args['ignore_archive'] is False:  
         OPTIONS['download_archive'] = archive
         # FLAT_OPTIONS and SHALLOW_OPTIONS don't use archive
     else:
