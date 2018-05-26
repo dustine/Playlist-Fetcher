@@ -210,6 +210,7 @@ def refresh_database(database, args):
 
 def download(database, args):
     indexed = list()
+    oneoffs = map(lambda e: (None, e), args['download'])
 
     if args['skip_index'] is not True:
         order = "DESC" if args['reverse'] else "ASC"
@@ -220,11 +221,9 @@ def download(database, args):
     print(Fore.CYAN + "Updating {} playlists ({} indexed)...".format(
         len(indexed) + len(args['download']), len(indexed)))
 
-    oneoffs = map(lambda e: (None, e), args['download'])
-
     # index_pattern = re.compile(r'^\d+')
 
-    main_bar = tqdm(list(oneoffs) + indexed, unit='pl')
+    main_bar = tqdm(indexed + list(oneoffs), unit='pl')
     custom_logger = get_tqdm_logger(main_bar)
 
     video_bar_options = {
